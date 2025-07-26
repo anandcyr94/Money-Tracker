@@ -91,37 +91,27 @@
         // Destructure Firebase functions directly from the window object
         const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, collection, onSnapshot, addDoc, query, orderBy, serverTimestamp, doc, deleteDoc } = window;
 
-        // Recharts components: Access them safely with a fallback to placeholders
-        const RechartsComponents = window.Recharts || {
-            BarChart: ({ children }) => <div className="recharts-placeholder text-center text-gray-500 py-4">Bar Chart Placeholder<br/>(Recharts not loaded globally)</div>,
-            Bar: () => null,
-            PieChart: ({ children }) => <div className="recharts-placeholder text-center text-gray-500 py-4">Pie Chart Placeholder<br/>(Recharts not loaded globally)</div>,
-            Pie: () => null,
-            Cell: () => null,
-            XAxis: () => null,
-            YAxis: () => null,
-            CartesianGrid: () => null,
-            Tooltip: () => null,
-            Legend: () => null,
-            ResponsiveContainer: ({ children }) => <div style={{ width: '100%', height: '250px' }}>{children}</div>
-        };
-        const { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = RechartsComponents;
-
-
-        // Define a list of predefined expense categories based on user's request
-        const PREDEFINED_CATEGORIES = [
-            'Business',
-            'Petrol',
-            'Fixed Expenses',
-            'Family',
-            'Entertainment',
-            'Anand',
-            'Kalaiyarasio',
-            'Other' // This 'Other' will trigger the custom input
-        ];
+        // Recharts components: Define them conditionally based on Recharts availability
+        let BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer;
 
         // Main App Component
         function App() {
+            // State to track if Recharts is ready
+            const [areChartsReady, setAreChartsReady] = useState(false);
+
+            // Define a list of predefined expense categories based on user's request
+            // MOVED INSIDE COMPONENT TO RESOLVE ReferenceError
+            const PREDEFINED_CATEGORIES = [
+                'Business',
+                'Petrol',
+                'Fixed Expenses',
+                'Family',
+                'Entertainment',
+                'Anand',
+                'Kalaiyarasio',
+                'Other' // This 'Other' will trigger the custom input
+            ];
+
             // Firebase configuration (YOUR PROJECT'S CONFIG)
             const firebaseConfig = {
                 apiKey: "AIzaSyBG7RNSUwfjj6vI2hR9PZQA5LKoVktDU6g",
@@ -146,15 +136,6 @@
             const [customCategory, setCustomCategory] = useState('');
             const [description, setDescription] = useState('');
             const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
-
-            const [selectedMonth, setSelectedMonth] = useState(() => {
-                const today = new Date();
-                const july2025 = new Date('2025-07-01');
-                if (today >= july2025) {
-                    return today.toISOString().slice(0, 7);
-                }
-                return '2025-07';
-            });
 
             // State for LLM insights
             const [llmInsight, setLlmInsight] = useState('');
@@ -206,6 +187,31 @@
                     setLoading(false);
                 }
             }, []);
+
+            // Effect to check for Recharts readiness
+            useEffect(() => {
+                const checkRecharts = setInterval(() => {
+                    if (window.Recharts && window.Recharts.BarChart) { // Check for a specific component to ensure full load
+                        BarChart = window.Recharts.BarChart;
+                        Bar = window.Recharts.Bar;
+                        PieChart = window.Recharts.PieChart;
+                        Pie = window.Recharts.Pie;
+                        Cell = window.Recharts.Cell;
+                        XAxis = window.Recharts.XAxis;
+                        YAxis = window.Recharts.YAxis;
+                        CartesianGrid = window.Recharts.CartesianGrid;
+                        Tooltip = window.Recharts.Tooltip;
+                        Legend = window.Recharts.Legend;
+                        ResponsiveContainer = window.Recharts.ResponsiveContainer;
+                        setAreChartsReady(true);
+                        clearInterval(checkRecharts);
+                        console.log("Recharts loaded successfully!");
+                    }
+                }, 100); // Check every 100ms
+
+                return () => clearInterval(checkRecharts);
+            }, []);
+
 
             // Fetch transactions from Firestore
             useEffect(() => {
@@ -365,10 +371,7 @@ Summary:`;
             };
 
 
-            // Filter transactions based on the selected month for dashboard display
-            const filteredTransactions = transactions.filter(t => t.month === selectedMonth);
-
-            // Calculate current month's summary
+            // Filter transactions based on the selected month for dashboard display (now always current month)
             const currentMonth = new Date().toISOString().slice(0, 7);
             const currentMonthTransactions = transactions.filter(t => t.month === currentMonth);
 
@@ -382,27 +385,8 @@ Summary:`;
             }, { income: 0, expense: 0 });
             currentMonthSummary.balance = currentMonthSummary.income - currentMonthSummary.expense;
 
-            // Prepare data for the monthly income/expense bar chart (for selected month)
-            const monthlySummary = filteredTransactions.reduce((acc, curr) => {
-                if (curr.type === 'income') {
-                    acc.income += curr.amount;
-                } else {
-                    acc.expense += curr.amount;
-                }
-                return acc;
-            }, { income: 0, expense: 0 });
-
-            // Prepare data for the combined income and expense categories pie chart (for selected month)
-            const combinedCategoriesData = filteredTransactions.reduce((acc, curr) => {
-                if (curr.type === 'income') {
-                    acc['Income'] = (acc['Income'] || 0) + curr.amount;
-                } else {
-                    acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
-                }
-                return acc;
-            }, {});
-            const combinedPieChartData = Object.entries(combinedCategoriesData).map(([name, value]) => ({ name, value }));
-
+            // Prepare data for the CURRENT MONTH Income/Expense Bar Chart
+            const currentMonthBarChartData = [{ name: 'Income', value: currentMonthSummary.income }, { name: 'Expense', value: currentMonthSummary.expense }];
 
             // Prepare data for the CURRENT MONTH combined income and expense categories pie chart
             const currentMonthCombinedCategoriesData = currentMonthTransactions.reduce((acc, curr) => {
@@ -421,18 +405,18 @@ Summary:`;
                 '#8A2BE2', '#7FFF00', '#D2691E', '#6495ED', '#DC143C', '#00FFFF', '#00008B'
             ];
 
-            const getMonthOptions = () => {
-                const startDate = new Date('2025-07-01');
-                const today = new Date();
-                const options = [];
-
-                let currentMonthIter = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-                while (currentMonthIter <= today) {
-                    options.push(currentMonthIter.toISOString().slice(0, 7));
-                    currentMonthIter.setMonth(currentMonthIter.getMonth() + 1);
-                }
-                return options.reverse();
-            };
+            // getMonthOptions is no longer needed for a simplified current-month-only dashboard
+            // const getMonthOptions = () => {
+            //     const startDate = new Date('2025-07-01');
+            //     const today = new Date();
+            //     const options = [];
+            //     let currentMonthIter = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+            //     while (currentMonthIter <= today) {
+            //         options.push(currentMonthIter.toISOString().slice(0, 7));
+            //         currentMonthIter.setMonth(currentMonthIter.getMonth() + 1);
+            //     }
+            //     return options.reverse();
+            // };
 
             const exportToExcel = () => {
                 if (typeof XLSX === 'undefined') {
@@ -630,48 +614,56 @@ Summary:`;
                             {/* Current Month Income/Expense Bar Chart */}
                             <div className="mb-8 bg-gray-50 p-4 rounded-lg shadow-inner">
                                 <h3 className="text-xl font-semibold text-gray-800 mb-3">Current Month Overview (Income vs. Expense)</h3>
-                                <ResponsiveContainer width="100%" height={250}>
-                                    <BarChart
-                                        data={[{ name: 'Income', value: currentMonthSummary.income }, { name: 'Expense', value: currentMonthSummary.expense }]}
-                                        margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                                    >
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                                        <XAxis dataKey="name" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
-                                        <YAxis dataKey="value" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
-                                        <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} formatter={(value) => `$${value.toFixed(2)}`} />
-                                        <Legend />
-                                        <Bar dataKey="value" name="Amount" radius={[10, 10, 0, 0]}>
-                                            <Cell cursor="pointer" fill="#4CAF50" />
-                                            <Cell cursor="pointer" fill="#F44336" />
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
+                                {areChartsReady ? (
+                                    <ResponsiveContainer width="100%" height={250}>
+                                        <BarChart
+                                            data={[{ name: 'Income', value: currentMonthSummary.income }, { name: 'Expense', value: currentMonthSummary.expense }]}
+                                            margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                                        >
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                                            <XAxis dataKey="name" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
+                                            <YAxis dataKey="value" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
+                                            <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} formatter={(value) => `$${value.toFixed(2)}`} />
+                                            <Legend />
+                                            <Bar dataKey="value" name="Amount" radius={[10, 10, 0, 0]}>
+                                                <Cell cursor="pointer" fill="#4CAF50" />
+                                                <Cell cursor="pointer" fill="#F44336" />
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <p className="text-center text-gray-500 mt-4">Charts loading...</p>
+                                )}
                             </div>
 
                             {/* Current Month Transaction Breakdown by Category Pie Chart */}
                             {currentMonthCombinedPieChartData.length > 0 ? (
                                 <div className="mb-8 bg-gray-50 p-4 rounded-lg shadow-inner">
                                     <h3 className="text-xl font-semibold text-gray-800 mb-3">Current Month Transaction Breakdown by Category</h3>
-                                    <ResponsiveContainer width="100%" height={300}>
-                                        <PieChart>
-                                            <Pie
-                                                data={currentMonthCombinedPieChartData}
-                                                cx="50%"
-                                                cy="50%"
-                                                labelLine={false}
-                                                outerRadius={100}
-                                                fill="#8884d8"
-                                                dataKey="value"
-                                                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                                            >
-                                                {currentMonthCombinedPieChartData.map((entry, index) => (
-                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                                ))}
-                                            </Pie>
-                                            <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
-                                            <Legend layout="vertical" align="right" verticalAlign="middle" />
-                                        </PieChart>
-                                    </ResponsiveContainer>
+                                    {areChartsReady ? (
+                                        <ResponsiveContainer width="100%" height={300}>
+                                            <PieChart>
+                                                <Pie
+                                                    data={currentMonthCombinedPieChartData}
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    labelLine={false}
+                                                    outerRadius={100}
+                                                    fill="#8884d8"
+                                                    dataKey="value"
+                                                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                                                >
+                                                    {currentMonthCombinedPieChartData.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                    ))}
+                                                </Pie>
+                                                <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+                                                <Legend layout="vertical" align="right" verticalAlign="middle" />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <p className="text-center text-gray-500 mt-4">Charts loading...</p>
+                                    )}
                                 </div>
                             ) : (
                                 <p className="text-center text-gray-500 mt-4">No transaction data for the current month to display.</p>
@@ -697,74 +689,6 @@ Summary:`;
                                     <p className="text-center text-gray-500 mt-4 text-sm">Click the button above to get AI-powered insights into your spending for the current month!</p>
                                 )}
                             </div>
-
-
-                            {/* Month Selector for Dashboard (for historical charts) */}
-                            <div className="mb-6">
-                                <label htmlFor="month-select" className="block text-sm font-medium text-gray-700 mb-1">Select Month for Historical Charts:</label>
-                                <select
-                                    id="month-select"
-                                    value={selectedMonth}
-                                    onChange={(e) => setSelectedMonth(e.target.value)}
-                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                >
-                                    {getMonthOptions().map(month => (
-                                        <option key={month} value={month}>
-                                            {new Date(month + '-01').toLocaleString('default', { month: 'long', year: 'numeric' })}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Monthly Income/Expense Bar Chart (for selected month) */}
-                            <div className="mb-8 bg-gray-50 p-4 rounded-lg shadow-inner">
-                                <h3 className="text-xl font-semibold text-gray-800 mb-3">Historical Monthly Overview (Income vs. Expense)</h3>
-                                <ResponsiveContainer width="100%" height={250}>
-                                    <BarChart
-                                        data={[{ name: 'Income', value: monthlySummary.income }, { name: 'Expense', value: monthlySummary.expense }]}
-                                        margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                                    >
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                                        <XAxis dataKey="name" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
-                                        <YAxis dataKey="value" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
-                                        <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} formatter={(value) => `$${value.toFixed(2)}`} />
-                                        <Legend />
-                                        <Bar dataKey="value" name="Amount" radius={[10, 10, 0, 0]}>
-                                            <Cell cursor="pointer" fill="#4CAF50" />
-                                            <Cell cursor="pointer" fill="#F44336" />
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-
-                            {/* Combined Income and Expense Categories Pie Chart (for selected month) */}
-                            {combinedPieChartData.length > 0 ? (
-                                <div className="bg-gray-50 p-4 rounded-lg shadow-inner">
-                                    <h3 className="text-xl font-semibold text-gray-800 mb-3">Historical Transaction Breakdown by Category</h3>
-                                    <ResponsiveContainer width="100%" height={300}>
-                                        <PieChart>
-                                            <Pie
-                                                data={combinedPieChartData}
-                                                cx="50%"
-                                                cy="50%"
-                                                labelLine={false}
-                                                outerRadius={100}
-                                                fill="#8884d8"
-                                                dataKey="value"
-                                                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                                            >
-                                                {combinedPieChartData.map((entry, index) => (
-                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                                ))}
-                                            </Pie>
-                                            <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
-                                            <Legend layout="vertical" align="right" verticalAlign="middle" />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            ) : (
-                                <p className="text-center text-gray-500 mt-4">No transaction data for the selected month to display.</p>
-                            )}
                         </section>
                     </div>
 

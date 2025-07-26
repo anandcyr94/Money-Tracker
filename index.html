@@ -91,26 +91,25 @@
         // Destructure Firebase functions directly from the window object
         const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, collection, onSnapshot, addDoc, query, orderBy, serverTimestamp, doc, deleteDoc } = window;
 
-        // Recharts components: Define them conditionally based on Recharts availability
+        // Recharts components: Define them conditionally based on window.Recharts availability
         let BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer;
+
+        // Define a list of predefined expense categories based on user's request
+        const PREDEFINED_CATEGORIES = [
+            'Business',
+            'Petrol',
+            'Fixed Expenses',
+            'Family',
+            'Entertainment',
+            'Anand',
+            'Kalaiyarasi', // Renamed from Kalaiyarasio
+            'Other' // This 'Other' will trigger the custom input
+        ];
 
         // Main App Component
         function App() {
             // State to track if Recharts is ready
             const [areChartsReady, setAreChartsReady] = useState(false);
-
-            // Define a list of predefined expense categories based on user's request
-            // MOVED INSIDE COMPONENT TO RESOLVE ReferenceError
-            const PREDEFINED_CATEGORIES = [
-                'Business',
-                'Petrol',
-                'Fixed Expenses',
-                'Family',
-                'Entertainment',
-                'Anand',
-                'Kalaiyarasio',
-                'Other' // This 'Other' will trigger the custom input
-            ];
 
             // Firebase configuration (YOUR PROJECT'S CONFIG)
             const firebaseConfig = {
@@ -190,26 +189,41 @@
 
             // Effect to check for Recharts readiness
             useEffect(() => {
-                const checkRecharts = setInterval(() => {
-                    if (window.Recharts && window.Recharts.BarChart) { // Check for a specific component to ensure full load
-                        BarChart = window.Recharts.BarChart;
-                        Bar = window.Recharts.Bar;
-                        PieChart = window.Recharts.PieChart;
-                        Pie = window.Recharts.Pie;
-                        Cell = window.Recharts.Cell;
-                        XAxis = window.Recharts.XAxis;
-                        YAxis = window.Recharts.YAxis;
-                        CartesianGrid = window.Recharts.CartesianGrid;
-                        Tooltip = window.Recharts.Tooltip;
-                        Legend = window.Recharts.Legend;
-                        ResponsiveContainer = window.Recharts.ResponsiveContainer;
-                        setAreChartsReady(true);
-                        clearInterval(checkRecharts);
-                        console.log("Recharts loaded successfully!");
-                    }
-                }, 100); // Check every 100ms
+                // Check immediately and then set up an interval
+                if (window.Recharts && window.Recharts.BarChart) {
+                    BarChart = window.Recharts.BarChart;
+                    Bar = window.Recharts.Bar;
+                    PieChart = window.Recharts.PieChart;
+                    Cell = window.Recharts.Cell;
+                    XAxis = window.Recharts.XAxis;
+                    YAxis = window.Recharts.YAxis;
+                    CartesianGrid = window.Recharts.CartesianGrid;
+                    Tooltip = window.Recharts.Tooltip;
+                    Legend = window.Recharts.Legend;
+                    ResponsiveContainer = window.Recharts.ResponsiveContainer;
+                    setAreChartsReady(true);
+                    console.log("Recharts loaded successfully on initial check!");
+                } else {
+                    const checkRechartsInterval = setInterval(() => {
+                        if (window.Recharts && window.Recharts.BarChart) {
+                            BarChart = window.Recharts.BarChart;
+                            Bar = window.Recharts.Bar;
+                            PieChart = window.Recharts.PieChart;
+                            Cell = window.Recharts.Cell;
+                            XAxis = window.Recharts.XAxis;
+                            YAxis = window.Recharts.YAxis;
+                            CartesianGrid = window.Recharts.CartesianGrid;
+                            Tooltip = window.Recharts.Tooltip;
+                            Legend = window.Recharts.Legend;
+                            ResponsiveContainer = window.Recharts.ResponsiveContainer;
+                            setAreChartsReady(true);
+                            clearInterval(checkRechartsInterval);
+                            console.log("Recharts loaded successfully via interval!");
+                        }
+                    }, 200); // Check every 200ms
 
-                return () => clearInterval(checkRecharts);
+                    return () => clearInterval(checkRechartsInterval);
+                }
             }, []);
 
 
@@ -235,7 +249,7 @@
                 } else if (!isAuthReady) {
                     console.log("Firestore fetch deferred: Auth not yet ready.");
                 } else if (!db) {
-                    console.log("Firestore fetch deferred: DB not initialized.");
+                        console.log("Firestore fetch deferred: DB not initialized.");
                 }
             }, [db, isAuthReady, userId]);
 
@@ -318,16 +332,18 @@
                 setIsGeneratingInsight(true);
                 setLlmInsight(''); // Clear previous insights
 
+                const currentMonth = new Date().toISOString().slice(0, 7); // Re-calculate current month for LLM context
                 const currentMonthName = new Date(currentMonth + '-01').toLocaleString('default', { month: 'long', year: 'numeric' });
+                const currentMonthTransactionsForLLM = transactions.filter(t => t.month === currentMonth); // Filter for LLM
 
-                if (currentMonthTransactions.length === 0) {
+                if (currentMonthTransactionsForLLM.length === 0) {
                     setLlmInsight(`No transactions recorded for ${currentMonthName} yet. Add some data to get insights!`);
                     setIsGeneratingInsight(false);
                     return;
                 }
 
                 // Prepare transaction data for the LLM
-                const transactionsForLLM = currentMonthTransactions.map(t => {
+                const transactionsForLLM = currentMonthTransactionsForLLM.map(t => {
                     return `${t.date}: ${t.type === 'income' ? 'Income' : 'Expense'} of $${t.amount.toFixed(2)} on ${t.category === 'N/A' ? 'N/A' : t.category} - ${t.description || 'No description'}`;
                 }).join('\n');
 
@@ -370,8 +386,7 @@ Summary:`;
                 }
             };
 
-
-            // Filter transactions based on the selected month for dashboard display (now always current month)
+            // Calculate current month's summary (still needed for LLM and summary display)
             const currentMonth = new Date().toISOString().slice(0, 7);
             const currentMonthTransactions = transactions.filter(t => t.month === currentMonth);
 
@@ -385,38 +400,29 @@ Summary:`;
             }, { income: 0, expense: 0 });
             currentMonthSummary.balance = currentMonthSummary.income - currentMonthSummary.expense;
 
-            // Prepare data for the CURRENT MONTH Income/Expense Bar Chart
-            const currentMonthBarChartData = [{ name: 'Income', value: currentMonthSummary.income }, { name: 'Expense', value: currentMonthSummary.expense }];
-
-            // Prepare data for the CURRENT MONTH combined income and expense categories pie chart
-            const currentMonthCombinedCategoriesData = currentMonthTransactions.reduce((acc, curr) => {
-                if (curr.type === 'income') {
-                    acc['Income'] = (acc['Income'] || 0) + curr.amount;
-                } else {
+            // Calculate category-wise breakdown for current month
+            const currentMonthExpenseCategories = currentMonthTransactions
+                .filter(t => t.type === 'expense')
+                .reduce((acc, curr) => {
                     acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
-                }
-                return acc;
-            }, {});
-            const currentMonthCombinedPieChartData = Object.entries(currentMonthCombinedCategoriesData).map(([name, value]) => ({ name, value }));
+                    return acc;
+                }, {});
+            const currentMonthExpenseCategoriesArray = Object.entries(currentMonthExpenseCategories).map(([name, value]) => ({ name, value }));
+
+            // Calculate ALL categories breakdown for all time
+            const allTimeExpenseCategories = transactions
+                .filter(t => t.type === 'expense')
+                .reduce((acc, curr) => {
+                    acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+                    return acc;
+                }, {});
+            const allTimeExpenseCategoriesArray = Object.entries(allTimeExpenseCategories).map(([name, value]) => ({ name, value }));
 
 
             const COLORS = [
                 '#4CAF50', '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF0000', '#00FF00', '#0000FF', '#FFA07A', '#BA55D3',
                 '#8A2BE2', '#7FFF00', '#D2691E', '#6495ED', '#DC143C', '#00FFFF', '#00008B'
             ];
-
-            // getMonthOptions is no longer needed for a simplified current-month-only dashboard
-            // const getMonthOptions = () => {
-            //     const startDate = new Date('2025-07-01');
-            //     const today = new Date();
-            //     const options = [];
-            //     let currentMonthIter = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-            //     while (currentMonthIter <= today) {
-            //         options.push(currentMonthIter.toISOString().slice(0, 7));
-            //         currentMonthIter.setMonth(currentMonthIter.getMonth() + 1);
-            //     }
-            //     return options.reverse();
-            // };
 
             const exportToExcel = () => {
                 if (typeof XLSX === 'undefined') {
@@ -468,7 +474,7 @@ Summary:`;
                         )}
                     </header>
 
-                    {/* Main content area: Transaction Form and Dashboard */}
+                    {/* Main content area: Transaction Form and Dashboard (simplified) */}
                     <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
                         {/* Transaction Entry Form Section */}
                         <section className="bg-white p-6 rounded-xl shadow-lg border border-purple-200">
@@ -589,14 +595,14 @@ Summary:`;
                             </form>
                         </section>
 
-                        {/* Dashboard Section */}
+                        {/* Dashboard Section (Simplified) */}
                         <section className="bg-white p-6 rounded-xl shadow-lg border border-blue-200">
-                            <h2 className="text-2xl font-bold text-blue-700 mb-4">Dashboard</h2>
+                            <h2 className="text-2xl font-bold text-blue-700 mb-4">Current Month Overview</h2>
 
                             {/* Current Month Summary */}
                             <div className="mb-8 bg-blue-50 p-4 rounded-lg shadow-inner border border-blue-200">
                                 <h3 className="text-xl font-semibold text-blue-800 mb-3">
-                                    Current Month: {new Date(currentMonth + '-01').toLocaleString('default', { month: 'long', year: 'numeric' })}
+                                    Summary: {new Date(currentMonth + '-01').toLocaleString('default', { month: 'long', year: 'numeric' })}
                                 </h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
                                     <div className="p-2 rounded-md bg-green-100 text-green-800 font-bold">
@@ -611,67 +617,27 @@ Summary:`;
                                 </div>
                             </div>
 
-                            {/* Current Month Income/Expense Bar Chart */}
-                            <div className="mb-8 bg-gray-50 p-4 rounded-lg shadow-inner">
-                                <h3 className="text-xl font-semibold text-gray-800 mb-3">Current Month Overview (Income vs. Expense)</h3>
-                                {areChartsReady ? (
-                                    <ResponsiveContainer width="100%" height={250}>
-                                        <BarChart
-                                            data={[{ name: 'Income', value: currentMonthSummary.income }, { name: 'Expense', value: currentMonthSummary.expense }]}
-                                            margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                                        >
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                                            <XAxis dataKey="name" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
-                                            <YAxis dataKey="value" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
-                                            <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} formatter={(value) => `$${value.toFixed(2)}`} />
-                                            <Legend />
-                                            <Bar dataKey="value" name="Amount" radius={[10, 10, 0, 0]}>
-                                                <Cell cursor="pointer" fill="#4CAF50" />
-                                                <Cell cursor="pointer" fill="#F44336" />
-                                            </Bar>
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                ) : (
-                                    <p className="text-center text-gray-500 mt-4">Charts loading...</p>
-                                )}
-                            </div>
-
-                            {/* Current Month Transaction Breakdown by Category Pie Chart */}
-                            {currentMonthCombinedPieChartData.length > 0 ? (
+                            {/* Category-wise Breakdown (Current Month) */}
+                            {currentMonthExpenseCategoriesArray.length > 0 ? (
                                 <div className="mb-8 bg-gray-50 p-4 rounded-lg shadow-inner">
-                                    <h3 className="text-xl font-semibold text-gray-800 mb-3">Current Month Transaction Breakdown by Category</h3>
-                                    {areChartsReady ? (
-                                        <ResponsiveContainer width="100%" height={300}>
-                                            <PieChart>
-                                                <Pie
-                                                    data={currentMonthCombinedPieChartData}
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    labelLine={false}
-                                                    outerRadius={100}
-                                                    fill="#8884d8"
-                                                    dataKey="value"
-                                                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                                                >
-                                                    {currentMonthCombinedPieChartData.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                                    ))}
-                                                </Pie>
-                                                <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
-                                                <Legend layout="vertical" align="right" verticalAlign="middle" />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                    ) : (
-                                        <p className="text-center text-gray-500 mt-4">Charts loading...</p>
-                                    )}
+                                    <h3 className="text-xl font-semibold text-gray-800 mb-3">Category-wise Breakdown (Current Month)</h3>
+                                    <div className="space-y-2">
+                                        {currentMonthExpenseCategoriesArray.map((data, index) => (
+                                            <div key={index} className="flex justify-between items-center bg-gray-100 p-2 rounded-md">
+                                                <span className="font-medium text-gray-700">{data.name}</span>
+                                                <span className="font-bold text-gray-800">${data.value.toFixed(2)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             ) : (
-                                <p className="text-center text-gray-500 mt-4">No transaction data for the current month to display.</p>
+                                <p className="text-center text-gray-500 mt-4">No expense data for the current month to display category breakdown.</p>
                             )}
+
 
                             {/* LLM Insights Section */}
                             <div className="mb-8 bg-purple-50 p-4 rounded-lg shadow-inner border border-purple-200">
-                                <h3 className="text-xl font-semibold text-purple-800 mb-3">✨ Spending Insights (Current Month)</h3>
+                                <h3 className="text-xl font-semibold text-purple-800 mb-3">✨ Spending Insights</h3>
                                 <button
                                     onClick={handleGetSpendingInsights}
                                     disabled={isGeneratingInsight}

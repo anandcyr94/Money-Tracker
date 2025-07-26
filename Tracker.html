@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANAND & KALAIYARASI MONEY TRACKER</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom styles for better aesthetics */
+        .form-radio:checked {
+            border-color: transparent;
+            background-color: currentColor;
+            background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3ccircle cx='8' cy='8' r='3'/%3e%3c/svg%3e");
+            background-size: 100% 100%;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        .form-radio:checked.text-green-600 {
+            background-color: #059669; /* Darker green for checked */
+        }
+        .form-radio:checked.text-red-600 {
+            background-color: #dc2626; /* Darker red for checked */
+        }
+        /* Simple spinner for loading state */
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #6366f1; /* Indigo 500 */
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-purple-100 to-blue-200 min-h-screen p-4 sm:p-6 lg:p-8">
+
+    <div id="root"></div>
+
+    <!-- React CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX transformation in browser (for development, production build is preferred) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Recharts CDN -->
+    <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+
+    <!-- Firebase CDN (Directly exposing functions to window for Babel access) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, addDoc, query, orderBy, serverTimestamp, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // Directly assign functions to the window object
+        window.initializeApp = initializeApp;
+        window.getAuth = getAuth;
+        window.signInAnonymously = signInAnonymously;
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.getFirestore = getFirestore;
+        window.collection = collection;
+        window.onSnapshot = onSnapshot;
+        window.addDoc = addDoc;
+        window.query = query;
+        window.orderBy = orderBy;
+        window.serverTimestamp = serverTimestamp;
+        window.doc = doc;
+        window.deleteDoc = deleteDoc;
+    </script>
+
+    <!-- XLSX library for Excel export (loaded globally) -->
+    <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React; // Destructure React hooks
+
+        // Destructure Firebase functions directly from the window object
+        const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, collection, onSnapshot, addDoc, query, orderBy, serverTimestamp, doc, deleteDoc } = window;
+
+        // Recharts components: Access them safely with a fallback to placeholders
+        const RechartsComponents = window.Recharts || {
+            BarChart: ({ children }) => <div className="recharts-placeholder text-center text-gray-500 py-4">Bar Chart Placeholder<br/>(Recharts not loaded globally)</div>,
+            Bar: () => null,
+            PieChart: ({ children }) => <div className="recharts-placeholder text-center text-gray-500 py-4">Pie Chart Placeholder<br/>(Recharts not loaded globally)</div>,
+            Pie: () => null,
+            Cell: () => null,
+            XAxis: () => null,
+            YAxis: () => null,
+            CartesianGrid: () => null,
+            Tooltip: () => null,
+            Legend: () => null,
+            ResponsiveContainer: ({ children }) => <div style={{ width: '100%', height: '250px' }}>{children}</div>
+        };
+        const { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = RechartsComponents;
+
+
+        // Define a list of predefined expense categories based on user's request
+        const PREDEFINED_CATEGORIES = [
+            'Business',
+            'Petrol',
+            'Fixed Expenses',
+            'Family',
+            'Entertainment',
+            'Anand',
+            'Kalaiyarasio',
+            'Other' // This 'Other' will trigger the custom input
+        ];
+
+        // Main App Component
+        function App() {
+            // Firebase configuration (YOUR PROJECT'S CONFIG)
+            const firebaseConfig = {
+                apiKey: "AIzaSyBG7RNSUwfjj6vI2hR9PZQA5LKoVktDU6g",
+                authDomain: "money-tracker-c7371.firebaseapp.com",
+                projectId: "money-tracker-c7371",
+                storageBucket: "money-tracker-c7371.firebasestorage.app",
+                messagingSenderId: "232245848210",
+                appId: "1:232245848210:web:9da67be69f074b37f79e4b",
+                measurementId: "G-QZ572MRXFT"
+            };
+
+            const [db, setDb] = useState(null);
+            const [auth, setAuth] = useState(null);
+            const [userId, setUserId] = useState(null);
+            const [transactions, setTransactions] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [isAuthReady, setIsAuthReady] = useState(false);
+
+            const [type, setType] = useState('expense');
+            const [amount, setAmount] = useState('');
+            const [category, setCategory] = useState(PREDEFINED_CATEGORIES[0]);
+            const [customCategory, setCustomCategory] = useState('');
+            const [description, setDescription] = useState('');
+            const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
+
+            const [selectedMonth, setSelectedMonth] = useState(() => {
+                const today = new Date();
+                const july2025 = new Date('2025-07-01');
+                if (today >= july2025) {
+                    return today.toISOString().slice(0, 7);
+                }
+                return '2025-07';
+            });
+
+            // State for LLM insights
+            const [llmInsight, setLlmInsight] = useState('');
+            const [isGeneratingInsight, setIsGeneratingInsight] = useState(false);
+
+
+            // Initialize Firebase client and set up auth listener
+            useEffect(() => {
+                try {
+                    // Check if Firebase functions are actually available on window
+                    if (typeof initializeApp === 'undefined' || typeof getAuth === 'undefined' || typeof getFirestore === 'undefined') {
+                        console.error("Firebase functions are not globally available. Check CDN loading or module exposure.");
+                        setLoading(false);
+                        return;
+                    }
+
+                    if (!firebaseConfig.apiKey) {
+                        console.error("Firebase config not set. Please paste your firebaseConfig object into the code.");
+                        setLoading(false);
+                        return;
+                    }
+                    const app = initializeApp(firebaseConfig);
+                    const authInstance = getAuth(app);
+                    const firestoreInstance = getFirestore(app);
+
+                    setAuth(authInstance);
+                    setDb(firestoreInstance);
+
+                    const unsubscribeAuth = onAuthStateChanged(authInstance, async (user) => {
+                        if (user) {
+                            setUserId(user.uid);
+                            console.log("Auth state changed: User signed in. UID:", user.uid);
+                        } else {
+                            console.log("Auth state changed: No user signed in. Attempting anonymous sign-in.");
+                            try {
+                                await signInAnonymously(authInstance);
+                                console.log("Signed in anonymously.");
+                            } catch (error) {
+                                console.error("Error signing in anonymously:", error);
+                            }
+                        }
+                        setIsAuthReady(true);
+                        setLoading(false);
+                    });
+
+                    return () => unsubscribeAuth();
+                } catch (error) {
+                    console.error("Error initializing Firebase:", error);
+                    setLoading(false);
+                }
+            }, []);
+
+            // Fetch transactions from Firestore
+            useEffect(() => {
+                if (db && isAuthReady) {
+                    console.log("Attempting to fetch transactions. User ID (if available):", userId);
+                    const transactionsColRef = collection(db, 'transactions');
+                    const q = query(transactionsColRef, orderBy('timestamp', 'desc'));
+
+                    const unsubscribe = onSnapshot(q, (snapshot) => {
+                        const fetchedTransactions = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }));
+                        setTransactions(fetchedTransactions);
+                        console.log("Fetched transactions:", fetchedTransactions);
+                    }, (error) => {
+                        console.error("Error fetching transactions:", error);
+                    });
+
+                    return () => unsubscribe();
+                } else if (!isAuthReady) {
+                    console.log("Firestore fetch deferred: Auth not yet ready.");
+                } else if (!db) {
+                    console.log("Firestore fetch deferred: DB not initialized.");
+                }
+            }, [db, isAuthReady, userId]);
+
+            // Handler for adding a new transaction
+            const handleAddTransaction = async (e) => {
+                e.preventDefault();
+
+                if (!db || !userId) {
+                    console.error("Firestore or User ID not available. Please wait for sign-in.");
+                    return;
+                }
+
+                const parsedAmount = parseFloat(amount);
+                if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
+                    console.error("Invalid amount. Please enter a positive number.");
+                    return;
+                }
+
+                let finalCategory = '';
+                if (type === 'expense') {
+                    if (category === 'Other') {
+                        if (!customCategory.trim()) {
+                            console.error("Custom category is required when 'Other' is selected.");
+                            return;
+                        }
+                        finalCategory = customCategory.trim();
+                    } else {
+                        finalCategory = category;
+                    }
+                } else {
+                    finalCategory = 'N/A';
+                }
+
+                const dateObj = new Date(transactionDate);
+                const monthString = dateObj.toISOString().slice(0, 7);
+
+                const newTransaction = {
+                    type: type,
+                    amount: parsedAmount,
+                    category: finalCategory,
+                    description: description.trim(),
+                    date: transactionDate,
+                    month: monthString,
+                    createdBy: userId,
+                    timestamp: serverTimestamp()
+                };
+
+                try {
+                    const transactionsColRef = collection(db, 'transactions');
+                    await addDoc(transactionsColRef, newTransaction);
+                    console.log("Transaction added successfully!");
+                    setAmount('');
+                    setCategory(PREDEFINED_CATEGORIES[0]);
+                    setCustomCategory('');
+                    setDescription('');
+                    setTransactionDate(new Date().toISOString().split('T')[0]);
+                } catch (error) {
+                    console.error("Error adding transaction:", error);
+                }
+            };
+
+            // Handler for deleting a transaction
+            const handleDeleteTransaction = async (transactionId) => {
+                if (!db || !userId) {
+                    console.error("Firestore or User ID not available. Please wait for sign-in.");
+                    return;
+                }
+
+                try {
+                    const transactionRef = doc(db, 'transactions', transactionId);
+                    await deleteDoc(transactionRef);
+                    console.log("Transaction deleted successfully!");
+                } catch (error) {
+                    console.error("Error deleting transaction:", error);
+                }
+            };
+
+            // Gemini API Integration: Get Spending Insights
+            const handleGetSpendingInsights = async () => {
+                setIsGeneratingInsight(true);
+                setLlmInsight(''); // Clear previous insights
+
+                const currentMonthName = new Date(currentMonth + '-01').toLocaleString('default', { month: 'long', year: 'numeric' });
+
+                if (currentMonthTransactions.length === 0) {
+                    setLlmInsight(`No transactions recorded for ${currentMonthName} yet. Add some data to get insights!`);
+                    setIsGeneratingInsight(false);
+                    return;
+                }
+
+                // Prepare transaction data for the LLM
+                const transactionsForLLM = currentMonthTransactions.map(t => {
+                    return `${t.date}: ${t.type === 'income' ? 'Income' : 'Expense'} of $${t.amount.toFixed(2)} on ${t.category === 'N/A' ? 'N/A' : t.category} - ${t.description || 'No description'}`;
+                }).join('\n');
+
+                const prompt = `Analyze the following financial transactions for the month of ${currentMonthName}. Provide a concise summary of spending habits, highlight any notable trends (e.g., high spending in a category, significant income), and offer one general piece of financial advice based on this data.
+
+Transactions:
+${transactionsForLLM}
+
+Summary:`;
+
+                try {
+                    let chatHistory = [];
+                    chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                    const payload = { contents: chatHistory };
+                    const apiKey = ""; // Canvas will automatically provide the API key here
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const result = await response.json();
+
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const text = result.candidates[0].content.parts[0].text;
+                        setLlmInsight(text);
+                    } else {
+                        setLlmInsight("Could not generate insights. Please try again or add more data.");
+                        console.error("Gemini API response structure unexpected:", result);
+                    }
+                } catch (error) {
+                    console.error("Error calling Gemini API:", error);
+                    setLlmInsight("Failed to get insights. Please check your network or try again later.");
+                } finally {
+                    setIsGeneratingInsight(false);
+                }
+            };
+
+
+            // Filter transactions based on the selected month for dashboard display
+            const filteredTransactions = transactions.filter(t => t.month === selectedMonth);
+
+            // Calculate current month's summary
+            const currentMonth = new Date().toISOString().slice(0, 7);
+            const currentMonthTransactions = transactions.filter(t => t.month === currentMonth);
+
+            const currentMonthSummary = currentMonthTransactions.reduce((acc, curr) => {
+                if (curr.type === 'income') {
+                    acc.income += curr.amount;
+                } else {
+                    acc.expense += curr.amount;
+                }
+                return acc;
+            }, { income: 0, expense: 0 });
+            currentMonthSummary.balance = currentMonthSummary.income - currentMonthSummary.expense;
+
+            // Prepare data for the monthly income/expense bar chart (for selected month)
+            const monthlySummary = filteredTransactions.reduce((acc, curr) => {
+                if (curr.type === 'income') {
+                    acc.income += curr.amount;
+                } else {
+                    acc.expense += curr.amount;
+                }
+                return acc;
+            }, { income: 0, expense: 0 });
+
+            // Prepare data for the combined income and expense categories pie chart (for selected month)
+            const combinedCategoriesData = filteredTransactions.reduce((acc, curr) => {
+                if (curr.type === 'income') {
+                    acc['Income'] = (acc['Income'] || 0) + curr.amount;
+                } else {
+                    acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+                }
+                return acc;
+            }, {});
+            const combinedPieChartData = Object.entries(combinedCategoriesData).map(([name, value]) => ({ name, value }));
+
+
+            // Prepare data for the CURRENT MONTH combined income and expense categories pie chart
+            const currentMonthCombinedCategoriesData = currentMonthTransactions.reduce((acc, curr) => {
+                if (curr.type === 'income') {
+                    acc['Income'] = (acc['Income'] || 0) + curr.amount;
+                } else {
+                    acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+                }
+                return acc;
+            }, {});
+            const currentMonthCombinedPieChartData = Object.entries(currentMonthCombinedCategoriesData).map(([name, value]) => ({ name, value }));
+
+
+            const COLORS = [
+                '#4CAF50', '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF0000', '#00FF00', '#0000FF', '#FFA07A', '#BA55D3',
+                '#8A2BE2', '#7FFF00', '#D2691E', '#6495ED', '#DC143C', '#00FFFF', '#00008B'
+            ];
+
+            const getMonthOptions = () => {
+                const startDate = new Date('2025-07-01');
+                const today = new Date();
+                const options = [];
+
+                let currentMonthIter = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+                while (currentMonthIter <= today) {
+                    options.push(currentMonthIter.toISOString().slice(0, 7));
+                    currentMonthIter.setMonth(currentMonthIter.getMonth() + 1);
+                }
+                return options.reverse();
+            };
+
+            const exportToExcel = () => {
+                if (typeof XLSX === 'undefined') {
+                    console.error("XLSX library not loaded. Please ensure it's available globally.");
+                    return;
+                }
+
+                if (transactions.length === 0) {
+                    console.log("No transactions to export.");
+                    return;
+                }
+
+                const dataToExport = transactions.map(t => ({
+                    Date: t.date,
+                    Type: t.type,
+                    Amount: t.amount,
+                    Category: t.category,
+                    Description: t.description,
+                    CreatedBy: t.createdBy || '-' // Will show anonymous UID
+                }));
+
+                const ws = XLSX.utils.json_to_sheet(dataToExport);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Money Tracker Data");
+                XLSX.writeFile(wb, "Anand_Kalaiyarasi_Money_Tracker.xlsx");
+                console.log("Data exported to Excel.");
+            };
+
+            if (loading) {
+                return (
+                    <div className="flex items-center justify-center min-h-screen bg-gray-100">
+                        <p className="text-lg font-semibold text-gray-700">Loading Money Tracker...</p>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-purple-100 to-blue-200 font-sans p-4 sm:p-6 lg:p-8">
+                    {/* Header Section */}
+                    <header className="text-center mb-8">
+                        <h1 className="text-4xl sm:text-5xl font-extrabold text-purple-800 drop-shadow-lg">
+                            💰 ANAND & KALAIYARASI MONEY TRACKER
+                        </h1>
+                        {/* Display User ID (anonymous) */}
+                        {userId && (
+                            <p className="text-sm text-gray-600 mt-2">
+                                Signed in as: <span className="font-mono bg-gray-200 px-2 py-1 rounded-md text-xs">{userId}</span>
+                            </p>
+                        )}
+                    </header>
+
+                    {/* Main content area: Transaction Form and Dashboard */}
+                    <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {/* Transaction Entry Form Section */}
+                        <section className="bg-white p-6 rounded-xl shadow-lg border border-purple-200">
+                            <h2 className="text-2xl font-bold text-purple-700 mb-4">Add New Transaction</h2>
+                            <form onSubmit={handleAddTransaction} className="space-y-4">
+                                {/* Type Selection (Income/Expense Radio Buttons) */}
+                                <div className="flex items-center space-x-4">
+                                    <label className="flex items-center cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="type"
+                                            value="income"
+                                            checked={type === 'income'}
+                                            onChange={() => { setType('income'); setCategory('N/A'); setCustomCategory(''); }}
+                                            className="form-radio h-4 w-4 text-green-600 transition duration-150 ease-in-out"
+                                        />
+                                        <span className="ml-2 text-gray-700 font-medium">Income</span>
+                                    </label>
+                                    <label className="flex items-center cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="type"
+                                            value="expense"
+                                            checked={type === 'expense'}
+                                            onChange={() => { setType('expense'); setCategory(PREDEFINED_CATEGORIES[0]); }}
+                                            className="form-radio h-4 w-4 text-red-600 transition duration-150 ease-in-out"
+                                        />
+                                        <span className="ml-2 text-gray-700 font-medium">Expense</span>
+                                    </label>
+                                </div>
+
+                                {/* Amount Input */}
+                                <div>
+                                    <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                                    <input
+                                        type="number"
+                                        id="amount"
+                                        value={amount}
+                                        onChange={(e) => setAmount(e.target.value)}
+                                        placeholder="e.g., 500.00"
+                                        required
+                                        min="0.01" // Ensure positive amount
+                                        step="0.01" // Allow decimal values
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm transition duration-150 ease-in-out"
+                                    />
+                                </div>
+
+                                {/* Category Input (conditionally rendered for expenses) */}
+                                {type === 'expense' && (
+                                    <div>
+                                        <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                                        <select
+                                            id="category"
+                                            value={category}
+                                            onChange={(e) => {
+                                                setCategory(e.target.value);
+                                                // Clear custom category if 'Other' is not selected
+                                                if (e.target.value !== 'Other') {
+                                                    setCustomCategory('');
+                                                }
+                                            }}
+                                            required
+                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm transition duration-150 ease-in-out"
+                                        >
+                                            {PREDEFINED_CATEGORIES.map((cat) => (
+                                                <option key={cat} value={cat}>{cat}</option>
+                                            ))}
+                                        </select>
+
+                                        {/* Custom Category Input (shown only if 'Other' is selected) */}
+                                        {category === 'Other' && (
+                                            <input
+                                                type="text"
+                                                id="customCategory"
+                                                value={customCategory}
+                                                onChange={(e) => setCustomCategory(e.target.value)}
+                                                placeholder="Enter custom category"
+                                                required // Make custom category required if 'Other' is chosen
+                                                className="mt-2 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm transition duration-150 ease-in-out"
+                                            />
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Description Input (Optional) */}
+                                <div>
+                                    <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
+                                    <input
+                                        type="text"
+                                        id="description"
+                                        value={description}
+                                        onChange={(e) => setDescription(e.target.value)}
+                                        placeholder="e.g., Dinner with friends"
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm transition duration-150 ease-in-out"
+                                    />
+                                </div>
+
+                                {/* Date Input */}
+                                <div>
+                                    <label htmlFor="transactionDate" className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                                    <input
+                                        type="date"
+                                        id="transactionDate"
+                                        value={transactionDate}
+                                        onChange={(e) => setTransactionDate(e.target.value)}
+                                        required
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm transition duration-150 ease-in-out"
+                                    />
+                                </div>
+
+                                {/* Submit Button */}
+                                <button
+                                    type="submit"
+                                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-75"
+                                >
+                                    Add Transaction
+                                </button>
+                            </form>
+                        </section>
+
+                        {/* Dashboard Section */}
+                        <section className="bg-white p-6 rounded-xl shadow-lg border border-blue-200">
+                            <h2 className="text-2xl font-bold text-blue-700 mb-4">Dashboard</h2>
+
+                            {/* Current Month Summary */}
+                            <div className="mb-8 bg-blue-50 p-4 rounded-lg shadow-inner border border-blue-200">
+                                <h3 className="text-xl font-semibold text-blue-800 mb-3">
+                                    Current Month: {new Date(currentMonth + '-01').toLocaleString('default', { month: 'long', year: 'numeric' })}
+                                </h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+                                    <div className="p-2 rounded-md bg-green-100 text-green-800 font-bold">
+                                        Income: ${currentMonthSummary.income.toFixed(2)}
+                                    </div>
+                                    <div className="p-2 rounded-md bg-red-100 text-red-800 font-bold">
+                                        Expense: ${currentMonthSummary.expense.toFixed(2)}
+                                    </div>
+                                    <div className={`p-2 rounded-md font-bold ${currentMonthSummary.balance >= 0 ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
+                                        Balance: ${currentMonthSummary.balance.toFixed(2)}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Current Month Income/Expense Bar Chart */}
+                            <div className="mb-8 bg-gray-50 p-4 rounded-lg shadow-inner">
+                                <h3 className="text-xl font-semibold text-gray-800 mb-3">Current Month Overview (Income vs. Expense)</h3>
+                                <ResponsiveContainer width="100%" height={250}>
+                                    <BarChart
+                                        data={[{ name: 'Income', value: currentMonthSummary.income }, { name: 'Expense', value: currentMonthSummary.expense }]}
+                                        margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
+                                        <YAxis axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
+                                        <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} formatter={(value) => `$${value.toFixed(2)}`} />
+                                        <Legend />
+                                        <Bar dataKey="value" name="Amount" radius={[10, 10, 0, 0]}>
+                                            <Cell cursor="pointer" fill="#4CAF50" />
+                                            <Cell cursor="pointer" fill="#F44336" />
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+
+                            {/* Current Month Transaction Breakdown by Category Pie Chart */}
+                            {currentMonthCombinedPieChartData.length > 0 ? (
+                                <div className="mb-8 bg-gray-50 p-4 rounded-lg shadow-inner">
+                                    <h3 className="text-xl font-semibold text-gray-800 mb-3">Current Month Transaction Breakdown by Category</h3>
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <PieChart>
+                                            <Pie
+                                                data={currentMonthCombinedPieChartData}
+                                                cx="50%"
+                                                cy="50%"
+                                                labelLine={false}
+                                                outerRadius={100}
+                                                fill="#8884d8"
+                                                dataKey="value"
+                                                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                                            >
+                                                {currentMonthCombinedPieChartData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+                                            <Legend layout="vertical" align="right" verticalAlign="middle" />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            ) : (
+                                <p className="text-center text-gray-500 mt-4">No transaction data for the current month to display.</p>
+                            )}
+
+                            {/* LLM Insights Section */}
+                            <div className="mb-8 bg-purple-50 p-4 rounded-lg shadow-inner border border-purple-200">
+                                <h3 className="text-xl font-semibold text-purple-800 mb-3">✨ Spending Insights (Current Month)</h3>
+                                <button
+                                    onClick={handleGetSpendingInsights}
+                                    disabled={isGeneratingInsight}
+                                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-75 flex items-center justify-center space-x-2"
+                                >
+                                    {isGeneratingInsight && <div className="spinner"></div>}
+                                    <span>{isGeneratingInsight ? 'Generating Insights...' : '✨ Get Spending Insights'}</span>
+                                </button>
+                                {llmInsight && (
+                                    <div className="mt-4 p-3 bg-white rounded-md text-gray-700 text-sm leading-relaxed shadow-sm">
+                                        <pre className="whitespace-pre-wrap font-sans">{llmInsight}</pre>
+                                    </div>
+                                )}
+                                {!llmInsight && !isGeneratingInsight && (
+                                    <p className="text-center text-gray-500 mt-4 text-sm">Click the button above to get AI-powered insights into your spending for the current month!</p>
+                                )}
+                            </div>
+
+
+                            {/* Month Selector for Dashboard (for historical charts) */}
+                            <div className="mb-6">
+                                <label htmlFor="month-select" className="block text-sm font-medium text-gray-700 mb-1">Select Month for Historical Charts:</label>
+                                <select
+                                    id="month-select"
+                                    value={selectedMonth}
+                                    onChange={(e) => setSelectedMonth(e.target.value)}
+                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                >
+                                    {getMonthOptions().map(month => (
+                                        <option key={month} value={month}>
+                                            {new Date(month + '-01').toLocaleString('default', { month: 'long', year: 'numeric' })}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Monthly Income/Expense Bar Chart (for selected month) */}
+                            <div className="mb-8 bg-gray-50 p-4 rounded-lg shadow-inner">
+                                <h3 className="text-xl font-semibold text-gray-800 mb-3">Historical Monthly Overview (Income vs. Expense)</h3>
+                                <ResponsiveContainer width="100%" height={250}>
+                                    <BarChart
+                                        data={[{ name: 'Income', value: monthlySummary.income }, { name: 'Expense', value: monthlySummary.expense }]}
+                                        margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
+                                        <YAxis axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
+                                        <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} formatter={(value) => `$${value.toFixed(2)}`} />
+                                        <Legend />
+                                        <Bar dataKey="value" name="Amount" radius={[10, 10, 0, 0]}>
+                                            <Cell cursor="pointer" fill="#4CAF50" />
+                                            <Cell cursor="pointer" fill="#F44336" />
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+
+                            {/* Combined Income and Expense Categories Pie Chart (for selected month) */}
+                            {combinedPieChartData.length > 0 ? (
+                                <div className="bg-gray-50 p-4 rounded-lg shadow-inner">
+                                    <h3 className="text-xl font-semibold text-gray-800 mb-3">Historical Transaction Breakdown by Category</h3>
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <PieChart>
+                                            <Pie
+                                                data={combinedPieChartData}
+                                                cx="50%"
+                                                cy="50%"
+                                                labelLine={false}
+                                                outerRadius={100}
+                                                fill="#8884d8"
+                                                dataKey="value"
+                                                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                                            >
+                                                {combinedPieChartData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+                                            <Legend layout="vertical" align="right" verticalAlign="middle" />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            ) : (
+                                <p className="text-center text-gray-500 mt-4">No transaction data for the selected month to display.</p>
+                            )}
+                        </section>
+                    </div>
+
+                    {/* All Transactions List Section */}
+                    <section className="max-w-6xl mx-auto mt-8 bg-white p-6 rounded-xl shadow-lg border border-green-200">
+                        <h2 className="text-2xl font-bold text-green-700 mb-4">All Transactions</h2>
+                        {transactions.length === 0 ? (
+                            <p className="text-gray-500 text-center">No transactions recorded yet. Add some above!</p>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider rounded-tl-lg">
+                                                Date
+                                            </th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Type
+                                            </th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Amount
+                                            </th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Category
+                                            </th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Description
+                                            </th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Created By
+                                            </th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider rounded-tr-lg">
+                                                Actions
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {transactions.map((transaction) => (
+                                            <tr key={transaction.id} className="hover:bg-gray-50 transition duration-150 ease-in-out">
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                    {transaction.date}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                                        transaction.type === 'income' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                                    }`}>
+                                                        {transaction.type}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                    ${transaction.amount.toFixed(2)}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    {transaction.category === 'N/A' ? '-' : transaction.category}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    {transaction.description || '-'}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                    {transaction.createdBy || '-'}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                    <button
+                                                        onClick={() => handleDeleteTransaction(transaction.id)}
+                                                        className="text-red-600 hover:text-red-900 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75 p-2 rounded-md transition duration-150 ease-in-out"
+                                                        title="Delete Transaction"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor">
+                                                            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm6 0a1 1 0 11-2 0v6a1 1 0 112 0V8z" clipRule="evenodd" />
+                                                        </svg>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                        {/* Export to Excel Button */}
+                        <button
+                            onClick={exportToExcel}
+                            className="mt-6 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75"
+                        >
+                            Export All Data to Excel
+                        </button>
+                    </section>
+                </div>
+            );
+        }
+
+        // Mount the React App component to the 'root' div
+        // Ensure DOM is fully loaded before rendering React app
+        document.addEventListener('DOMContentLoaded', () => {
+            ReactDOM.render(<App />, document.getElementById('root'));
+        });
+    </script>
+
+</body>
+</html>

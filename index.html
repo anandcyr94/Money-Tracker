@@ -44,7 +44,12 @@
 </head>
 <body class="bg-gradient-to-br from-purple-100 to-blue-200 min-h-screen p-4 sm:p-6 lg:p-8">
 
-    <div id="root"></div>
+    <div id="root">
+        <!-- This message will be replaced by the React app once it loads -->
+        <div class="flex items-center justify-center min-h-screen">
+            <p class="text-lg font-semibold text-gray-700">Loading application...</p>
+        </div>
+    </div>
 
     <!-- React CDN -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -632,7 +637,7 @@ Summary:`;
                                     >
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
-                                        <YAxis axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
+                                        <YAxis dataKey="value" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
                                         <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} formatter={(value) => `$${value.toFixed(2)}`} />
                                         <Legend />
                                         <Bar dataKey="value" name="Amount" radius={[10, 10, 0, 0]}>
@@ -721,7 +726,7 @@ Summary:`;
                                     >
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
-                                        <YAxis axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
+                                        <YAxis dataKey="value" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
                                         <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} formatter={(value) => `$${value.toFixed(2)}`} />
                                         <Legend />
                                         <Bar dataKey="value" name="Amount" radius={[10, 10, 0, 0]}>
@@ -852,9 +857,9 @@ Summary:`;
 
         // Mount the React App component to the 'root' div
         // Ensure DOM is fully loaded before rendering React app
-        document.addEventListener('DOMContentLoaded', () => {
+        window.onload = function () { // Changed to window.onload for maximum compatibility
             ReactDOM.render(<App />, document.getElementById('root'));
-        });
+        };
     </script>
 
 </body>

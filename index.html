@@ -91,62 +91,25 @@
         // Destructure Firebase functions directly from the window object
         const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, collection, onSnapshot, addDoc, query, orderBy, serverTimestamp, doc, deleteDoc } = window;
 
-        // Define Recharts components based on window.Recharts availability
-        // This makes the components available to React only if Recharts is fully loaded.
-        const getRechartsComponents = () => {
-            if (window.Recharts) {
-                return {
-                    BarChart: window.Recharts.BarChart,
-                    Bar: window.Recharts.Bar,
-                    PieChart: window.Recharts.PieChart,
-                    Cell: window.Recharts.Cell,
-                    XAxis: window.Recharts.XAxis,
-                    YAxis: window.Recharts.YAxis,
-                    CartesianGrid: window.Recharts.CartesianGrid,
-                    Tooltip: window.Recharts.Tooltip,
-                    Legend: window.Recharts.Legend,
-                    ResponsiveContainer: window.Recharts.ResponsiveContainer,
-                };
-            }
-            // Fallback placeholders if Recharts is not loaded
-            return {
-                BarChart: ({ children }) => <div className="recharts-placeholder text-center text-gray-500 py-4">Bar Chart Placeholder<br/>(Recharts not loaded)</div>,
-                Bar: () => null,
-                PieChart: ({ children }) => <div className="recharts-placeholder text-center text-500 py-4">Pie Chart Placeholder<br/>(Recharts not loaded)</div>,
-                Cell: () => null,
-                XAxis: () => null,
-                YAxis: () => null,
-                CartesianGrid: () => null,
-                Tooltip: () => null,
-                Legend: () => null,
-                ResponsiveContainer: ({ children }) => <div style={{ width: '100%', height: '250px' }}>{children}</div>,
-            };
-        };
-
+        // Recharts components: Define them conditionally based on window.Recharts availability
+        let BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer;
 
         // Define a list of predefined expense categories based on user's request
-        const PREDEFINED_EXPENSE_CATEGORIES = [
+        const PREDEFINED_CATEGORIES = [
             'Business',
             'Petrol',
             'Fixed Expenses',
             'Family',
             'Entertainment',
             'Anand',
-            'Kalaiyarasi',
+            'Kalaiyarasi', // Renamed from Kalaiyarasio
             'Other' // This 'Other' will trigger the custom input
-        ];
-
-        // Define a list of predefined income categories
-        const PREDEFINED_INCOME_CATEGORIES = [
-            'Salary',
-            'Business',
-            'Others' // This 'Others' will trigger the custom input for income
         ];
 
         // Main App Component
         function App() {
-            // Get Recharts components dynamically on each render (they will be defined or be placeholders)
-            const { BarChart, Bar, PieChart, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = getRechartsComponents();
+            // State to track if Recharts is ready
+            const [areChartsReady, setAreChartsReady] = useState(false);
 
             // Firebase configuration (YOUR PROJECT'S CONFIG)
             const firebaseConfig = {
@@ -168,8 +131,7 @@
 
             const [type, setType] = useState('expense');
             const [amount, setAmount] = useState('');
-            // Initialize category based on type
-            const [category, setCategory] = useState(PREDEFINED_EXPENSE_CATEGORIES[0]);
+            const [category, setCategory] = useState(PREDEFINED_CATEGORIES[0]);
             const [customCategory, setCustomCategory] = useState('');
             const [description, setDescription] = useState('');
             const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
@@ -225,6 +187,46 @@
                 }
             }, []);
 
+            // Effect to check for Recharts readiness
+            useEffect(() => {
+                // Check immediately and then set up an interval
+                if (window.Recharts && window.Recharts.BarChart) {
+                    BarChart = window.Recharts.BarChart;
+                    Bar = window.Recharts.Bar;
+                    PieChart = window.Recharts.PieChart;
+                    Cell = window.Recharts.Cell;
+                    XAxis = window.Recharts.XAxis;
+                    YAxis = window.Recharts.YAxis;
+                    CartesianGrid = window.Recharts.CartesianGrid;
+                    Tooltip = window.Recharts.Tooltip;
+                    Legend = window.Recharts.Legend;
+                    ResponsiveContainer = window.Recharts.ResponsiveContainer;
+                    setAreChartsReady(true);
+                    console.log("Recharts loaded successfully on initial check!");
+                } else {
+                    const checkRechartsInterval = setInterval(() => {
+                        if (window.Recharts && window.Recharts.BarChart) {
+                            BarChart = window.Recharts.BarChart;
+                            Bar = window.Recharts.Bar;
+                            PieChart = window.Recharts.PieChart;
+                            Cell = window.Recharts.Cell;
+                            XAxis = window.Recharts.XAxis;
+                            YAxis = window.Recharts.YAxis;
+                            CartesianGrid = window.Recharts.CartesianGrid;
+                            Tooltip = window.Recharts.Tooltip;
+                            Legend = window.Recharts.Legend;
+                            ResponsiveContainer = window.Recharts.ResponsiveContainer;
+                            setAreChartsReady(true);
+                            clearInterval(checkRechartsInterval);
+                            console.log("Recharts loaded successfully via interval!");
+                        }
+                    }, 200); // Check every 200ms
+
+                    return () => clearInterval(checkRechartsInterval);
+                }
+            }, []);
+
+
             // Fetch transactions from Firestore
             useEffect(() => {
                 if (db && isAuthReady) {
@@ -277,16 +279,8 @@
                     } else {
                         finalCategory = category;
                     }
-                } else { // Handle income categories
-                    if (category === 'Others') {
-                        if (!customCategory.trim()) {
-                            console.error("Custom category is required when 'Others' is selected for income.");
-                            return;
-                        }
-                        finalCategory = customCategory.trim();
-                    } else {
-                        finalCategory = category;
-                    }
+                } else {
+                    finalCategory = 'N/A';
                 }
 
                 const dateObj = new Date(transactionDate);
@@ -308,12 +302,7 @@
                     await addDoc(transactionsColRef, newTransaction);
                     console.log("Transaction added successfully!");
                     setAmount('');
-                    // Reset category based on current type
-                    if (type === 'expense') {
-                        setCategory(PREDEFINED_EXPENSE_CATEGORIES[0]);
-                    } else {
-                        setCategory(PREDEFINED_INCOME_CATEGORIES[0]);
-                    }
+                    setCategory(PREDEFINED_CATEGORIES[0]);
                     setCustomCategory('');
                     setDescription('');
                     setTransactionDate(new Date().toISOString().split('T')[0]);
@@ -411,7 +400,7 @@ Summary:`;
             }, { income: 0, expense: 0 });
             currentMonthSummary.balance = currentMonthSummary.income - currentMonthSummary.expense;
 
-            // Calculate category-wise breakdown for current month expenses
+            // Calculate category-wise breakdown for current month
             const currentMonthExpenseCategories = currentMonthTransactions
                 .filter(t => t.type === 'expense')
                 .reduce((acc, curr) => {
@@ -420,13 +409,14 @@ Summary:`;
                 }, {});
             const currentMonthExpenseCategoriesArray = Object.entries(currentMonthExpenseCategories).map(([name, value]) => ({ name, value }));
 
-            // Calculate ALL categories breakdown for all time (for overall summary)
-            const allTimeCategories = transactions.reduce((acc, curr) => {
-                const categoryName = curr.type === 'income' ? `Income: ${curr.category}` : curr.category;
-                acc[categoryName] = (acc[categoryName] || 0) + curr.amount;
-                return acc;
-            }, {});
-            const allTimeCategoriesArray = Object.entries(allTimeCategories).map(([name, value]) => ({ name, value }));
+            // Calculate ALL categories breakdown for all time
+            const allTimeExpenseCategories = transactions
+                .filter(t => t.type === 'expense')
+                .reduce((acc, curr) => {
+                    acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+                    return acc;
+                }, {});
+            const allTimeExpenseCategoriesArray = Object.entries(allTimeExpenseCategories).map(([name, value]) => ({ name, value }));
 
 
             const COLORS = [
@@ -498,7 +488,7 @@ Summary:`;
                                             name="type"
                                             value="income"
                                             checked={type === 'income'}
-                                            onChange={() => { setType('income'); setCategory(PREDEFINED_INCOME_CATEGORIES[0]); setCustomCategory(''); }}
+                                            onChange={() => { setType('income'); setCategory('N/A'); setCustomCategory(''); }}
                                             className="form-radio h-4 w-4 text-green-600 transition duration-150 ease-in-out"
                                         />
                                         <span className="ml-2 text-gray-700 font-medium">Income</span>
@@ -509,11 +499,27 @@ Summary:`;
                                             name="type"
                                             value="expense"
                                             checked={type === 'expense'}
-                                            onChange={() => { setType('expense'); setCategory(PREDEFINED_EXPENSE_CATEGORIES[0]); setCustomCategory(''); }}
+                                            onChange={() => { setType('expense'); setCategory(PREDEFINED_CATEGORIES[0]); }}
                                             className="form-radio h-4 w-4 text-red-600 transition duration-150 ease-in-out"
                                         />
                                         <span className="ml-2 text-gray-700 font-medium">Expense</span>
                                     </label>
+                                </div>
+
+                                {/* Amount Input */}
+                                <div>
+                                    <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                                    <input
+                                        type="number"
+                                        id="amount"
+                                        value={amount}
+                                        onChange={(e) => setAmount(e.target.value)}
+                                        placeholder="e.g., 500.00"
+                                        required
+                                        min="0.01" // Ensure positive amount
+                                        step="0.01" // Allow decimal values
+                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm transition duration-150 ease-in-out"
+                                    />
                                 </div>
 
                                 {/* Category Input (conditionally rendered for expenses) */}
@@ -533,7 +539,7 @@ Summary:`;
                                             required
                                             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm transition duration-150 ease-in-out"
                                         >
-                                            {PREDEFINED_EXPENSE_CATEGORIES.map((cat) => (
+                                            {PREDEFINED_CATEGORIES.map((cat) => (
                                                 <option key={cat} value={cat}>{cat}</option>
                                             ))}
                                         </select>
@@ -552,56 +558,6 @@ Summary:`;
                                         )}
                                     </div>
                                 )}
-
-                                {/* Category Input (conditionally rendered for income) */}
-                                {type === 'income' && (
-                                    <div>
-                                        <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                                        <select
-                                            id="category"
-                                            value={category}
-                                            onChange={(e) => {
-                                                setCategory(e.target.value);
-                                                if (e.target.value !== 'Others') {
-                                                    setCustomCategory('');
-                                                }
-                                            }}
-                                            required
-                                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm transition duration-150 ease-in-out"
-                                        >
-                                            {PREDEFINED_INCOME_CATEGORIES.map((cat) => (
-                                                <option key={cat} value={cat}>{cat}</option>
-                                            ))}
-                                        </select>
-                                        {category === 'Others' && (
-                                            <input
-                                                type="text"
-                                                id="customCategory"
-                                                value={customCategory}
-                                                onChange={(e) => setCustomCategory(e.target.value)}
-                                                placeholder="Enter custom income category"
-                                                required
-                                                className="mt-2 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm transition duration-150 ease-in-out"
-                                            />
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Amount Input */}
-                                <div>
-                                    <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
-                                    <input
-                                        type="number"
-                                        id="amount"
-                                        value={amount}
-                                        onChange={(e) => setAmount(e.target.value)}
-                                        placeholder="e.g., 500.00"
-                                        required
-                                        min="0.01" // Ensure positive amount
-                                        step="0.01" // Allow decimal values
-                                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm transition duration-150 ease-in-out"
-                                    />
-                                </div>
 
                                 {/* Description Input (Optional) */}
                                 <div>
@@ -661,63 +617,23 @@ Summary:`;
                                 </div>
                             </div>
 
-                            {/* Current Month Income/Expense Bar Chart */}
-                            <div className="mb-8 bg-gray-50 p-4 rounded-lg shadow-inner">
-                                <h3 className="text-xl font-semibold text-gray-800 mb-3">Current Month Overview (Income vs. Expense)</h3>
-                                {window.Recharts ? ( // Directly check window.Recharts here
-                                    <ResponsiveContainer width="100%" height={250}>
-                                        <BarChart
-                                            data={[{ name: 'Income', value: currentMonthSummary.income }, { name: 'Expense', value: currentMonthSummary.expense }]}
-                                            margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                                        >
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                                            <XAxis dataKey="name" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
-                                            <YAxis dataKey="value" axisLine={false} tickLine={false} className="text-xs sm:text-sm" />
-                                            <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} formatter={(value) => `$${value.toFixed(2)}`} />
-                                            <Legend />
-                                            <Bar dataKey="value" name="Amount" radius={[10, 10, 0, 0]}>
-                                                <Cell cursor="pointer" fill="#4CAF50" />
-                                                <Cell cursor="pointer" fill="#F44336" />
-                                            </Bar>
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                ) : (
-                                    <p className="text-center text-gray-500 mt-4">Charts not available.</p>
-                                )}
-                            </div>
-
-                            {/* Current Month Transaction Breakdown by Category Pie Chart */}
-                            {currentMonthCombinedPieChartData.length > 0 ? (
+                            {/* Category-wise Breakdown (Current Month) */}
+                            {currentMonthExpenseCategoriesArray.length > 0 ? (
                                 <div className="mb-8 bg-gray-50 p-4 rounded-lg shadow-inner">
-                                    <h3 className="text-xl font-semibold text-gray-800 mb-3">Current Month Transaction Breakdown by Category</h3>
-                                    {window.Recharts ? ( // Directly check window.Recharts here
-                                        <ResponsiveContainer width="100%" height={300}>
-                                            <PieChart>
-                                                <Pie
-                                                    data={currentMonthCombinedPieChartData}
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    labelLine={false}
-                                                    outerRadius={100}
-                                                    fill="#8884d8"
-                                                    dataKey="value"
-                                                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                                                >
-                                                    {currentMonthCombinedPieChartData.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                                    ))}
-                                                </Pie>
-                                                <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
-                                                <Legend layout="vertical" align="right" verticalAlign="middle" />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                    ) : (
-                                        <p className="text-center text-gray-500 mt-4">Charts not available.</p>
-                                    )}
+                                    <h3 className="text-xl font-semibold text-gray-800 mb-3">Category-wise Breakdown (Current Month)</h3>
+                                    <div className="space-y-2">
+                                        {currentMonthExpenseCategoriesArray.map((data, index) => (
+                                            <div key={index} className="flex justify-between items-center bg-gray-100 p-2 rounded-md">
+                                                <span className="font-medium text-gray-700">{data.name}</span>
+                                                <span className="font-bold text-gray-800">${data.value.toFixed(2)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             ) : (
-                                <p className="text-center text-gray-500 mt-4">No transaction data for the current month to display.</p>
+                                <p className="text-center text-gray-500 mt-4">No expense data for the current month to display category breakdown.</p>
                             )}
+
 
                             {/* LLM Insights Section */}
                             <div className="mb-8 bg-purple-50 p-4 rounded-lg shadow-inner border border-purple-200">
@@ -825,30 +741,13 @@ Summary:`;
                             Export All Data to Excel
                         </button>
                     </section>
-
-                    {/* Overall Category Summary Section (New) */}
-                    <section className="max-w-6xl mx-auto mt-8 bg-white p-6 rounded-xl shadow-lg border border-blue-200">
-                        <h2 className="text-2xl font-bold text-blue-700 mb-4">All Categories Summary</h2>
-                        {allTimeCategoriesArray.length > 0 ? (
-                            <div className="space-y-2">
-                                {allTimeCategoriesArray.map((data, index) => (
-                                    <div key={index} className="flex justify-between items-center bg-gray-100 p-2 rounded-md">
-                                        <span className="font-medium text-gray-700">{data.name}</span>
-                                        <span className="font-bold text-gray-800">${data.value.toFixed(2)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-center text-gray-500 mt-4">No transaction data to display overall category summary.</p>
-                        )}
-                    </section>
                 </div>
             );
         }
 
         // Mount the React App component to the 'root' div
         // Ensure DOM is fully loaded before rendering React app
-        window.onload = function () {
+        window.onload = function () { // Changed to window.onload for maximum compatibility
             ReactDOM.render(<App />, document.getElementById('root'));
         };
     </script>
